@@ -226,6 +226,10 @@ let MATCHES = [{"matchId": 1, "comp": "NHL", "year": 2026, "date": "2026-09-29",
 // The embedded snapshot preserves the spreadsheet's own row order, which isn't
 // necessarily chronological - sort it the same way the live CSV parser does.
 MATCHES.sort((a,b) => (b.date||'').localeCompare(a.date||'') || (b.matchId - a.matchId));
+// The embedded snapshot was generated before the season-start-year fix, so its baked-in
+// "year" values still split one season by calendar year - recompute them the same way
+// csvRowsToMatches now does, so the snapshot and live data agree.
+MATCHES.forEach(m => { m.year = seasonStartYear(m.date); });
 
 
 function normalizeText(s){
@@ -275,6 +279,15 @@ function parseSheetDate(s){
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 }
 
+// A season runs Oct-Jun, crossing a calendar year boundary - group by the year it started in
+// (Oct 2026 and Apr 2027 are both the "2026" season) so the year filter never splits one
+// season's games into two entries.
+function seasonStartYear(date){
+  if(!date) return null;
+  const y = parseInt(date.slice(0,4), 10), m = parseInt(date.slice(5,7), 10);
+  return m >= 7 ? y : y - 1;
+}
+
 function csvRowsToMatches(rows){
   // The sheet has a blank row above the real header row - skip any fully-blank leading row(s)
   // so the actual header row gets correctly identified and stripped, not treated as data.
@@ -287,7 +300,7 @@ function csvRowsToMatches(rows){
       return {
         matchId: i + 1,
         comp: r[11] || null,
-        year: date ? parseInt(date.slice(0,4)) : null,
+        year: seasonStartYear(date),
         date,
         round: r[1] || null,
         away: r[2],
@@ -326,6 +339,7 @@ async function loadLiveData(){
     MATCHES = live;
     populateFacets();
     updateStatLine();
+    setDefaultYear();
     setDefaultStatus();
     applyFilters();
     const now = new Date().toLocaleTimeString('en-US', {hour:'numeric', minute:'2-digit'});
@@ -372,6 +386,13 @@ function isPlayed(m){ return m.homeScore !== null && m.homeScore !== undefined &
 // Default to Results if any games have been played yet, otherwise Fixtures (nothing to show in Results).
 function setDefaultStatus(){
   fStatus.value = MATCHES.some(isPlayed) ? 'results' : 'fixtures';
+}
+// Default to the most recent season - a full multi-year history shouldn't require scrolling
+// past everything older just to see the current one. Only called on initial/live-data load,
+// never from populateFacets' per-filter refresh, so it never clobbers a year the user picked.
+function setDefaultYear(){
+  const latest = uniqueSorted(MATCHES, m => m.year, true)[0];
+  fYear.value = latest !== undefined ? String(latest) : '';
 }
 // A tied regulation score is broken by overtime/shootout goals (Home/Away Penalties columns) -
 // the NHL hasn't allowed a game to end in a draw since the 2005-06 season.
@@ -420,11 +441,13 @@ function uniqueSorted(arr, getter, numeric){
   }
   return vals;
 }
-function fillSelect(sel, values, placeholder){
+function fillSelect(sel, values, placeholder, labelFn){
   const cur = sel.value;
-  sel.innerHTML = `<option value="">${placeholder}</option>` + values.map(v => `<option value="${v}">${v}</option>`).join('');
+  sel.innerHTML = `<option value="">${placeholder}</option>` + values.map(v => `<option value="${v}">${labelFn ? labelFn(v) : v}</option>`).join('');
   if([...sel.options].some(o => o.value === cur)) sel.value = cur;
 }
+// "2026" (a season's start year) reads as "2026/27" in the dropdown.
+function seasonLabel(v){ return v + '/' + String(parseInt(v,10)+1).slice(-2); }
 // When a team is selected, a jersey filter must match THAT team's own side, not whatever
 // the opponent wore that game - otherwise "Canberra + Indigenous" would include games where
 // Canberra wore something else but the other team happened to wear an Indigenous jersey.
@@ -455,7 +478,7 @@ function populateFacets(){
   const teamList = [...new Set(teams)].sort();
   fillSelect(fTeam, teamList, 'Any team');
 
-  fillSelect(fYear, uniqueSorted(MATCHES.filter(facetPredicate('year')), m => m.year, true), 'Any year');
+  fillSelect(fYear, uniqueSorted(MATCHES.filter(facetPredicate('year')), m => m.year, true), 'Any year', seasonLabel);
 
   // When a team is picked, only that team's own side counts - not whatever the opponent wore that game.
   const jerseyScope = MATCHES.filter(facetPredicate('jersey'));
@@ -481,7 +504,10 @@ function updateStatLine(){
   document.getElementById('total-count').textContent = MATCHES.length;
   document.getElementById('kit-count').textContent = MATCHES.filter(m => m.homeImg || m.awayImg).length;
   const years = MATCHES.map(m => m.year).filter(Boolean);
-  if(years.length) document.getElementById('year-range').textContent = Math.min(...years) + '\u2013' + Math.max(...years);
+  if(years.length){
+    const lo = Math.min(...years), hi = Math.max(...years);
+    document.getElementById('year-range').textContent = lo === hi ? seasonLabel(lo) : (seasonLabel(lo) + '\u2013' + seasonLabel(hi));
+  }
 }
 
 // ---------- filtering ----------
@@ -685,6 +711,7 @@ function renderJerseyStats(){
 // ---------- init ----------
 populateFacets();
 updateStatLine();
+setDefaultYear();
 setDefaultStatus();
 applyFilters();
 loadLiveData();
