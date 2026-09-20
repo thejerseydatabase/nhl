@@ -158,6 +158,7 @@
   .c-photos{display:flex;gap:3px;justify-content:center;}
   .photo-dot{width:7px;height:7px;border-radius:50%;background:var(--loss);}
   .photo-dot.filled{background:var(--win);}
+  .row-note{grid-column:1/-1;text-align:center;font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.03em;color:var(--text-dim2);padding-top:4px;}
   .no-results{padding:32px 16px;text-align:center;color:var(--text-dim);font-size:13.5px;}
   .list-scroll{max-height:640px;overflow-y:auto;}
 
@@ -294,7 +295,9 @@ function parseCSV(text){
 }
 
 // Date, Round, Away Team, Away Jersey, Away Jersey Image URL, Away Score, Home Score, Home Jersey,
-// Home Jersey Image URL, Home Team, Stadium / Venue, Competition, Home Penalties, Away Penalties, Notes
+// Home Jersey Image URL, Home Team, Stadium / Venue, Competition, Home Penalties, Away Penalties, Notes,
+// Overtime (write OT, 2OT, 3OT etc. - only needed when the game was decided in overtime, not a
+// shootout; a shootout is already covered by the Home/Away Penalties columns above)
 // (2 trailing columns are the sheet author's own source-citation notes - not tracker data.)
 // Dates are day-first with a time ("29/09/2026 21:00") - JS's native Date() assumes US
 // MM/DD/YYYY and either misreads or fails on these, so day-first is parsed explicitly first.
@@ -348,7 +351,8 @@ function csvRowsToMatches(rows){
         stadium: r[10] || null,
         homePens: (r[12] === '' || r[12] === undefined) ? null : parseFloat(r[12]),
         awayPens: (r[13] === '' || r[13] === undefined) ? null : parseFloat(r[13]),
-        notes: r[14] || null
+        notes: r[14] || null,
+        overtime: r[15] || null
       };
     })
     // A row only counts as a properly entered fixture once it has both teams and a real
@@ -696,7 +700,7 @@ function renderMatchup(m){
   if(played){
     const hr = resultFor(m,'home'), ar = resultFor(m,'away');
     const soNote = wentToShootout(m) ? `<p class="ft-label" style="margin-top:2px;">${m.homePens}&ndash;${m.awayPens} on penalties</p>` : '';
-    scoreHtml = `<div class="score-tiles"><div class="tile ${hr}">${m.homeScore}</div><span class="tile-sep">&ndash;</span><div class="tile ${ar}">${m.awayScore}</div></div><p class="ft-label">Final</p>${soNote}`;
+    scoreHtml = `<div class="score-tiles"><div class="tile ${hr}">${m.homeScore}</div><span class="tile-sep">&ndash;</span><div class="tile ${ar}">${m.awayScore}</div></div><p class="ft-label">${m.overtime ? 'Final (' + m.overtime + ')' : 'Final'}</p>${soNote}`;
   } else {
     scoreHtml = `<div class="vs-label">VS</div><p class="ft-label">Not yet played</p>`;
   }
@@ -736,6 +740,7 @@ function renderList(){
         <span class="jcode c-ajersey" title="${m.awayJersey || 'Unknown'} jersey"><span class="jname-full">${jerseyCode(m.awayJersey)}</span><span class="jname-short">${jerseyAbbrev(m.awayJersey)}</span></span>
         <span class="c-round">${roundShort}</span>
         <span class="c-photos"><span class="photo-dot ${m.homeImg?'filled':''}"></span><span class="photo-dot ${m.awayImg?'filled':''}"></span></span>
+        ${wentToShootout(m) ? `<span class="row-note">${m.homePens}&ndash;${m.awayPens} on penalties</span>` : (m.overtime ? `<span class="row-note">${m.overtime}</span>` : '')}
       </div>`;
   }).join('');
 
