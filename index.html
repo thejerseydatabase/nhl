@@ -502,11 +502,9 @@ function updateJerseyBtnLabel(){
   else fJerseyBtn.textContent = selectedJerseys.size + ' jerseys selected';
 }
 // These five get pulled to the top (in this order) whenever they're
-// actually present in the data - most people filter by one of these far
-// more often than a team's one-off named release, and a comp that
-// doesn't have (say) an Indigenous jersey just never surfaces that
-// option at all, so nothing needs to be sport-specific here.
-const JERSEY_PRIORITY = ['Home','Away','Alternate','Indigenous','Heritage'];
+// actually present in the data (in this order) - everything else, like
+// a Reverse Retro release, falls alphabetically after these three.
+const JERSEY_PRIORITY = ['Home','Away','Alternate'];
 function sortJerseyNames(values){
   return [...values].sort((a,b) => {
     const ia = JERSEY_PRIORITY.indexOf(a), ib = JERSEY_PRIORITY.indexOf(b);
