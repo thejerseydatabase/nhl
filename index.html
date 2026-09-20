@@ -231,6 +231,23 @@
     <button id="clear-filters">Clear all filters</button>
   </div>
 
+  <section class="jersey-stats" id="ladder-box">
+    <button class="stats-toggle" id="ladder-toggle" aria-expanded="false">
+      <span>Jersey ladder</span><i class="ti ti-chevron-down"></i>
+    </button>
+    <div class="stats-body" id="ladder-body" hidden>
+      <div class="filters" style="grid-template-columns:200px;margin-bottom:14px;">
+        <select id="f-ladder-year" aria-label="Jersey ladder season"><option value="">All-time</option></select>
+      </div>
+      <div class="list-scroll" style="max-height:480px;">
+        <table>
+          <thead><tr><th style="text-align:left">#</th><th style="text-align:left">Team</th><th style="text-align:left">Jersey</th><th>GP</th><th>W</th><th>L</th><th>PF</th><th>PA</th><th>PD</th><th>PTS</th></tr></thead>
+          <tbody id="ladder-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
   <section class="jersey-stats" id="jersey-stats" hidden></section>
 
   <section class="matchup" id="matchup"></section>
@@ -411,6 +428,10 @@ const fTeamA = document.getElementById('f-teamA');
 const fTeamB = document.getElementById('f-teamB');
 const clearBtn = document.getElementById('clear-filters');
 const hideTrial = document.getElementById('hide-trial');
+const ladderToggle = document.getElementById('ladder-toggle');
+const ladderBody = document.getElementById('ladder-body');
+const fLadderYear = document.getElementById('f-ladder-year');
+const ladderTbody = document.getElementById('ladder-tbody');
 
 // Trial matches are marked by putting "Trial" (no number needed) in the Round column.
 function isTrialMatch(m){ return normalizeText(m.round) === 'trial'; }
@@ -579,6 +600,7 @@ function populateFacets(){
   fillSelect(fTeam, teamList, 'Any team');
 
   fillSelect(fYear, uniqueSorted(MATCHES.filter(facetPredicate('year')), m => m.year, true), 'Any year', seasonLabel);
+  fillSelect(fLadderYear, uniqueSorted(MATCHES, m => m.year, true), 'All-time', seasonLabel);
 
   // When a team is picked, only that team's own side counts - not whatever the opponent wore that game.
   const jerseyScope = MATCHES.filter(facetPredicate('jersey'));
@@ -598,6 +620,8 @@ function populateFacets(){
   fTeamB.innerHTML = teamList.map(t => `<option value="${t}">${t}</option>`).join('');
   if(teamList.includes(curA)) fTeamA.value = curA;
   if(teamList.includes(curB)) fTeamB.value = curB;
+
+  renderJerseyLadder();
 }
 
 function updateStatLine(){
@@ -754,6 +778,49 @@ function renderList(){
   });
 }
 
+// A ladder entry is one team's stint in one jersey - ranked the same way a competition
+// ladder is: points first, then points difference, wins, games played, then points for
+// (a shootout win/loss already flows in via resultFor, same as everywhere else).
+function renderJerseyLadder(){
+  const yr = fLadderYear.value;
+  const rows = MATCHES.filter(m => isPlayed(m) && (!yr || String(m.year) === yr));
+  const buckets = {};
+  function bump(team, jersey, pf, pa, result){
+    const key = team + '\u0001' + (jersey || 'Unknown');
+    if(!buckets[key]) buckets[key] = {team, jersey: jersey || 'Unknown', gp:0,w:0,l:0,pf:0,pa:0};
+    const b = buckets[key];
+    b.gp++; b.pf += pf; b.pa += pa;
+    if(result === 'win') b.w++;
+    else b.l++;
+  }
+  rows.forEach(m => {
+    bump(m.home, m.homeJersey, m.homeScore, m.awayScore, resultFor(m, 'home'));
+    bump(m.away, m.awayJersey, m.awayScore, m.homeScore, resultFor(m, 'away'));
+  });
+
+  const list = Object.values(buckets).map(b => {
+    const pd = b.pf - b.pa;
+    const pts = b.w * 2;
+    return Object.assign({}, b, {pd, pts});
+  });
+  list.sort((a,b) => b.pts - a.pts || b.pd - a.pd || b.w - a.w || b.gp - a.gp || b.pf - a.pf);
+
+  if(list.length === 0){
+    ladderTbody.innerHTML = `<tr><td colspan="10" style="text-align:center;color:var(--text-dim);padding:16px;">No results for this selection.</td></tr>`;
+    return;
+  }
+  ladderTbody.innerHTML = list.map((r, i) => `
+    <tr>
+      <td style="text-align:left">${i+1}</td>
+      <td style="text-align:left">${r.team}</td>
+      <td style="text-align:left">${r.jersey}</td>
+      <td>${r.gp}</td><td>${r.w}</td><td>${r.l}</td>
+      <td>${r.pf}</td><td>${r.pa}</td>
+      <td class="${r.pd > 0 ? 'gd-pos' : (r.pd < 0 ? 'gd-neg' : '')}">${r.pd > 0 ? '+' : ''}${r.pd}</td>
+      <td>${r.pts}</td>
+    </tr>`).join('');
+}
+
 function renderJerseyStats(){
   const team = mode === 'browse' ? fTeam.value : null;
   if(!team){ statsEl.hidden = true; statsEl.innerHTML = ''; return; }
@@ -810,6 +877,14 @@ function renderJerseyStats(){
     toggle.classList.toggle('open', !open);
   });
 }
+
+ladderToggle.addEventListener('click', () => {
+  const open = !ladderBody.hidden;
+  ladderBody.hidden = open;
+  ladderToggle.setAttribute('aria-expanded', String(!open));
+  ladderToggle.classList.toggle('open', !open);
+});
+fLadderYear.addEventListener('change', renderJerseyLadder);
 
 // ---------- init ----------
 populateFacets();
